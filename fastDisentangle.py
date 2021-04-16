@@ -1,16 +1,38 @@
+import math
 import numpy as np
 
 def fastDisentangle(chi1, chi2, A):
     """Calculate a unitary tensor with shape (chi1, chi2, chi1*chi2)
     that approximately disentangles the input tensor 'A'.
-    'A' must have a shape (chi1*chi2, chi3, chi4) where chi1<=chi3 and chi2<=chi4.
+    'A' must have the shape (chi1*chi2, chi3, chi4) where either
+    chi2 <= ceil(chi4 / ceil(chi1/chi3)) or chi1 <= ceil(chi3 / ceil(chi2/chi4)).
+    If these ratios are integers, then chi1*chi2 <= chi3*chi4 is sufficient.
+    chi1 <= chi3 and chi2 <= chi4 is also sufficient.
     
     example: fastDisentangle(2, 3, randomComplex([6,5,7]))
     """
     A = np.asarray(A)
     n,chi3,chi4 = A.shape
-    if not (n == chi1*chi2 and chi1 <= chi3 and chi2 <= chi4):
-        raise ValueError("fastDisentangle: 'A' must have a shape (chi1*chi2, chi3, chi4) where chi1<=chi3 and chi2<=chi4.")
+    if n != chi1*chi2:
+        raise ValueError("fastDisentangle: The input array must have the shape (chi1*chi2, chi3, chi4).")
+    
+    if chi1 > chi3:
+        chi4to3 = math.ceil(chi1 / chi3)
+        chi4new = math.ceil(chi4 / chi4to3)
+        if not chi2 <= chi4new:
+            raise ValueError("""fastDisentangle: The input array must have the shape (chi1*chi2, chi3, chi4) where either
+                             chi2 <= ceil(chi4 / ceil(chi1/chi3)) or
+                             chi1 <= ceil(chi3 / ceil(chi2/chi4)).""")
+        _,_,V1  = np.linalg.svd(np.reshape(A, (n*chi3, chi4))) # 1
+        V1      = V1.conj().T
+        V       = np.pad(V1, ((0,0), (0, chi4to3*chi4new - chi4))) # 2
+        V       = np.reshape(V, (chi4, chi4to3, chi4new))
+        Anew    = np.reshape(np.tensordot(A, V, 1), (n, chi3*chi4to3, chi4new)) # 3
+        return fastDisentangle(chi1, chi2, Anew)
+    
+    if chi2 > chi4:
+        return np.transpose(fastDisentangle(chi2, chi1, np.transpose(A, (0,2,1))), (1,0,2))
+    
     r = randomComplex(n) # 1
     alpha3, _, alpha4 = np.linalg.svd(np.tensordot(r, A, 1), full_matrices=False) # 2
     alpha3, alpha4 = np.conj(alpha3[:,0]), np.conj(alpha4[0,:])
