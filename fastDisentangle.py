@@ -16,13 +16,15 @@ def fastDisentangle(chi1, chi2, A):
     if n != chi1*chi2:
         raise ValueError("fastDisentangle: The input array must have the shape (chi1*chi2, chi3, chi4).")
     
+    # implementing Appendix B in https://arxiv.org/pdf/2104.08283
     if chi1 > chi3:
         chi4to3 = math.ceil(chi1 / chi3)
         chi4new = math.ceil(chi4 / chi4to3)
         if not chi2 <= chi4new:
-            raise ValueError("""fastDisentangle: The input array must have the shape (chi1*chi2, chi3, chi4) where either
-                             chi2 <= ceil(chi4 / ceil(chi1/chi3)) or
-                             chi1 <= ceil(chi3 / ceil(chi2/chi4)).""")
+            raise ValueError("""
+                fastDisentangle: The input array must have the shape (chi1*chi2, chi3, chi4) where either
+                chi2 <= ceil(chi4 / ceil(chi1/chi3)) or
+                chi1 <= ceil(chi3 / ceil(chi2/chi4)).""")
         _,_,V1  = np.linalg.svd(np.reshape(A, (n*chi3, chi4))) # 1
         V1      = V1.conj().T
         V       = np.pad(V1, ((0,0), (0, chi4to3*chi4new - chi4))) # 2
@@ -33,6 +35,7 @@ def fastDisentangle(chi1, chi2, A):
     if chi2 > chi4:
         return np.transpose(fastDisentangle(chi2, chi1, np.transpose(A, (0,2,1))), (1,0,2))
     
+    # implementing Algorithm 1 in https://arxiv.org/pdf/2104.08283
     r = randomComplex(n) # 1
     alpha3, _, alpha4 = np.linalg.svd(np.tensordot(r, A, 1), full_matrices=False) # 2
     alpha3, alpha4 = np.conj(alpha3[:,0]), np.conj(alpha4[0,:])
@@ -68,15 +71,16 @@ def orthogonalize(M):
                 # try a random vector instead:
                 Mi = randomComplex(Mi.shape[0])
             else:
-                M[i] = Mi / np.linalg.norm(Mi)
+                M[i] = Mi / norm
                 break
     return M
 
 def entanglement(UA):
     """Compute the entanglement entropy of UA = np.tensordot(U, A, 1)"""
+    # defined in equation (10) of https://arxiv.org/pdf/2104.08283
     UA = np.asarray(UA)
     chi1,chi2,chi3,chi4 = UA.shape
     lambdas  = np.linalg.svd(np.reshape(np.swapaxes(UA, 1, 2), (chi1*chi3, chi2*chi4)), compute_uv=False)
     ps  = lambdas*lambdas
     ps /= np.sum(ps)
-    return max(0., -np.sum(ps * np.log(np.maximum(ps, np.finfo(ps.dtype).tiny))))
+    return max(0., -np.dot(ps, np.log(np.maximum(ps, np.finfo(ps.dtype).tiny))))
