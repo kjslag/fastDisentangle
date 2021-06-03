@@ -68,17 +68,20 @@ def orthogonalize(M):
        Inserts random vectors in the case of linearly dependent rows."""
     M = np.array(M)
     rand = randomComplex if np.iscomplexobj(M) else randomReal
+    eps  = np.sqrt(np.finfo(M.dtype).eps)
     assert M.shape[0] <= M.shape[1]
+    norms = np.linalg.norm(M, axis=1)
     for i in range(0, M.shape[0]):
         Mi = M[i]
         while True:
             for j in range(0, i):
                 Mi = Mi - M[j] * (np.conj(M[j]) @ Mi)
             norm = np.linalg.norm(Mi)
-            if norm == 0:
+            if norms[i] == 0 or norm < eps * norms[i]:
                 # M[i] was a linear combination of M[:i-1]
                 # try a random vector instead:
                 Mi = rand(Mi.shape[0])
+                norms[i] = np.linalg.norm(Mi)
             else:
                 M[i] = Mi / norm
                 break
