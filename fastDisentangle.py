@@ -1,7 +1,7 @@
 import math
 import numpy as np
 
-def fastDisentangle(chi1, chi2, A):
+def fastDisentangle(chi1, chi2, A, transposeQ=None):
     """Calculate a unitary tensor with shape (chi1, chi2, chi1*chi2)
     that approximately disentangles the input tensor 'A'.
     'A' must have the shape (chi1*chi2, chi3, chi4) where either
@@ -12,6 +12,7 @@ def fastDisentangle(chi1, chi2, A):
     example: fastDisentangle(2, 3, randomComplex([6,5,7]))
     """
     A = np.asarray(A)
+    rand = randomComplex if np.iscomplexobj(A) else randomReal
     n,chi3,chi4 = A.shape
     if n != chi1*chi2:
         raise ValueError("fastDisentangle: The input array must have the shape (chi1*chi2, chi3, chi4).")
@@ -30,24 +31,31 @@ def fastDisentangle(chi1, chi2, A):
         V       = np.pad(V1, ((0,0), (0, chi4to3*chi4new - chi4))) # 2
         V       = np.reshape(V, (chi4, chi4to3, chi4new))
         Anew    = np.reshape(np.tensordot(A, V, 1), (n, chi3*chi4to3, chi4new)) # 3
-        return fastDisentangle(chi1, chi2, Anew)
+        return fastDisentangle(chi1, chi2, Anew, False)
     
     if chi2 > chi4:
         return np.transpose(fastDisentangle(chi2, chi1, np.transpose(A, (0,2,1))), (1,0,2))
     
     # implementing Algorithm 1 in https://arxiv.org/pdf/2104.08283
-    r = randomComplex(n) # 1
+    r = rand(n) # 1
     alpha3, _, alpha4 = np.linalg.svd(np.tensordot(r, A, 1), full_matrices=False) # 2
     alpha3, alpha4 = np.conj(alpha3[:,0]), np.conj(alpha4[0,:])
     V3  = np.mat(np.linalg.svd(np.tensordot(A, alpha4,   1  ), full_matrices=False)[2][:chi1]).H # 3
     V4  = np.mat(np.linalg.svd(np.tensordot(A, alpha3, (1,0)), full_matrices=False)[2][:chi2]).H # 4
     B   = np.einsum("kab,ai,bj -> kij", A, V3, V4, optimize=True) # 5
-    transposeQ = chi1 > chi2
+    if transposeQ is None:
+        transposeQ = chi1 > chi2
     Bdg = np.transpose(np.conj(B), (2,1,0) if transposeQ else (1,2,0))
     U   = np.reshape(orthogonalize(np.reshape(Bdg, (chi1*chi2, n))), Bdg.shape) # 6
     if transposeQ:
         U = np.swapaxes(U, 0, 1)
     return U
+
+def randomReal(ns):
+    """Gaussian random array with dimensions ns"""
+    if isinstance(ns, int):
+        ns = [ns]
+    return np.random.normal(size=ns)
 
 def randomComplex(ns):
     """Gaussian random array with dimensions ns"""
@@ -59,6 +67,7 @@ def orthogonalize(M):
     """Gram-Schmidt orthonormalization of the rows of M.
        Inserts random vectors in the case of linearly dependent rows."""
     M = np.array(M)
+    rand = randomComplex if np.iscomplexobj(M) else randomReal
     assert M.shape[0] <= M.shape[1]
     for i in range(0, M.shape[0]):
         Mi = M[i]
@@ -69,7 +78,7 @@ def orthogonalize(M):
             if norm == 0:
                 # M[i] was a linear combination of M[:i-1]
                 # try a random vector instead:
-                Mi = randomComplex(Mi.shape[0])
+                Mi = rand(Mi.shape[0])
             else:
                 M[i] = Mi / norm
                 break

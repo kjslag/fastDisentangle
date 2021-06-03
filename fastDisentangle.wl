@@ -1,6 +1,6 @@
 (* ::Package:: *)
 
-Clear[fastDisentangle, randomComplex, tensorContract, stripTensorProduct, entanglement]
+Clear[fastDisentangle, randomReal, randomComplex, tensorContract, stripTensorProduct, entanglement]
 
 (* fastDisentangle returns a unitary tensor with dimensions
      (\[Chi]1, \[Chi]2, \[Chi]1 \[Chi]2) that approximately disentangles `A`.
@@ -9,18 +9,20 @@ Clear[fastDisentangle, randomComplex, tensorContract, stripTensorProduct, entang
    If these ratios are integers, then \[Chi]1 \[Chi]2 <= \[Chi]3 \[Chi]4 is sufficient.
    \[Chi]1 <= \[Chi]3 and \[Chi]2 <= \[Chi]4 is also sufficient.
    example: fastDisentangle[{2,3}, randomComplex[6,5,7]] *)
-fastDisentangle[{\[Chi]1_Integer,\[Chi]2_Integer}, A_?ArrayQ] /;
+fastDisentangle[{\[Chi]1_Integer,\[Chi]2_Integer}, A_?ArrayQ,
+    transposeQ0_:Automatic] /;
     ArrayDepth@A==3 && \[Chi]1 \[Chi]2==Length@A && \[Chi]1<=Dimensions[A][[2]] && \[Chi]2<=Dimensions[A][[3]] :=
-    Module[{r,\[Alpha]3,\[Alpha]4,V3,V4,q,B,B\[Dagger],U,transposeQ=\[Chi]1>\[Chi]2},
+    Module[{r,\[Alpha]3,\[Alpha]4,V3,V4,q,B,B\[Dagger],U, transposeQ = Replace[transposeQ0, Automatic -> \[Chi]1>\[Chi]2],
+        rand=If[Total[Abs@Im@A,\[Infinity]]==0, randomReal, randomComplex]},
     (* implementing Algorithm 1 in https://arxiv.org/pdf/2104.08283 *)
-    r = randomComplex@Length@A; (*1*)
+    r = rand@Length@A; (*1*)
     {\[Alpha]3,\[Alpha]4} = {#1[[All,1]]\[Conjugate], #3[[All,1]]}& @@ SingularValueDecomposition[r . A, 1]; (*2*)
     V3 = Last@SingularValueDecomposition[A . \[Alpha]4, \[Chi]1]; (*3*)
     V4 = Last@SingularValueDecomposition[Transpose[A,{1,3,2}] . \[Alpha]3, \[Chi]2]; (*4*)
     B  = tensorContract[A,V3,V4, {{2,4},{3,6}}]; (*5*)
     B\[Dagger] = Conjugate@Transpose[B, If[transposeQ,{3,2,1},{3,1,2}]];
     (* help ensure linearly independent rows of B\[Dagger]: *)
-    B\[Dagger]+= $MachineEpsilon Max@Abs@B\[Dagger] randomComplex@@Dimensions@B\[Dagger];
+    B\[Dagger]+= $MachineEpsilon Max@Abs@B\[Dagger] rand@@Dimensions@B\[Dagger];
     U  = ArrayReshape[Orthogonalize[Catenate@B\[Dagger],
              Tolerance->0, Method->"ModifiedGramSchmidt"], Dimensions@B\[Dagger]]; (*6*)
     If[transposeQ, U = Transpose@U];
@@ -35,7 +37,7 @@ fastDisentangle[{\[Chi]1_Integer,\[Chi]2_Integer}, A_?ArrayQ] /;
     Module[{V},
     V = Last@SingularValueDecomposition@Catenate@A;(*1*)
     V = ArrayReshape[PadRight[V, {\[Chi]4, \[Chi]4to3 \[Chi]4\[Prime]}], {\[Chi]4, \[Chi]4to3, \[Chi]4\[Prime]}];(*2*)
-    fastDisentangle[{\[Chi]1, \[Chi]2}, Flatten[A . V, {{1},{2,3},{4}}]](*3*)
+    fastDisentangle[{\[Chi]1, \[Chi]2}, Flatten[A . V, {{1},{2,3},{4}}], False](*3*)
     ] /; \[Chi]2 <= \[Chi]4\[Prime]]
 fastDisentangle[{\[Chi]1_Integer,\[Chi]2_Integer}, A_?ArrayQ] /;
     ArrayDepth@A==3 && \[Chi]1 \[Chi]2==Length@A && \[Chi]1<=Dimensions[A][[2]] && \[Chi]2>Dimensions[A][[3]] :=
@@ -43,7 +45,8 @@ fastDisentangle[{\[Chi]1_Integer,\[Chi]2_Integer}, A_?ArrayQ] /;
 fastDisentangle@___ := Throw@"fastDisentangle: bad arguments"
 
 (* random complex tensor with dimensions `ns` *)
-randomComplex@ns__Integer := RandomVariate[NormalDistribution[],{ns,2}] . ({1,I}/Sqrt[2.])
+randomReal@ns__Integer := RandomVariate[NormalDistribution[],{ns}]
+randomComplex@ns__Integer := randomReal[ns,2] . ({1,I}/Sqrt[2.])
 
 (* TensorContract for the tensor product of multiple tensors *)
 tensorContract[T_, s_] := TensorContract[T, s]
