@@ -146,7 +146,7 @@ function checkAnsatz(chi1::Int, chi2::Int, chi3a::Int, chi4b::Int, chi3c::Int, c
 end
 
 """repeatedly check the ansatz"""
-function checkAnsatzRepeated(maxChi::Int=9)
+function checkAnsatzRepeated(maxChi::Int=5)
     c = 0
     BLAS.set_num_threads(1) # this seems to increase performance significantly
     while true
