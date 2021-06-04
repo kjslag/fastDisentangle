@@ -4,7 +4,7 @@
 (*NOTE: This implementation does not correctly handle the Orthogonalization in step 6 of https://arxiv.org/pdf/2104.08283 for certain fine-tuned cases where there are linearly dependent vectors.*)
 
 
-Clear[fastDisentangle, randomReal, randomComplex, tensorContract, stripTensorProduct, entanglement]
+Clear[fastDisentangle, entanglement, randomReal, randomComplex, tensorContract, stripTensorProduct]
 
 (* fastDisentangle returns a unitary tensor with dimensions
      (\[Chi]1, \[Chi]2, \[Chi]1 \[Chi]2) that approximately disentangles `A`.
@@ -50,6 +50,10 @@ fastDisentangle[{\[Chi]1_Integer,\[Chi]2_Integer}, A_?ArrayQ] /;
     Transpose[fastDisentangle[{\[Chi]2,\[Chi]1}, Transpose[A, {1,3,2}]], {2,1,3}]
 fastDisentangle@___ := Throw@"fastDisentangle: bad arguments"
 
+(* entanglement entropy of U.A, as defined in equation (10) of https://arxiv.org/pdf/2104.08283 *)
+entanglement@UA_ /; ArrayDepth@UA==4 := With[{\[Lambda]s=SingularValueList[Flatten[UA, {{1,3},{2,4}}], Tolerance->0]},
+    With[{ps = \[Lambda]s^2/\[Lambda]s . \[Lambda]s}, -ps . Log@Clip[ps,{$MinMachineNumber,1}]]]
+
 (* random complex tensor with dimensions `ns` *)
 randomReal@ns__Integer := RandomVariate[NormalDistribution[],{ns}]
 randomComplex@ns__Integer := randomReal[ns,2] . ({1,I}/Sqrt[2.])
@@ -61,10 +65,6 @@ stripTensorProduct@Inactive[TensorProduct]@T__ := TensorProduct@T
 stripTensorProduct@TensorTranspose[Inactive[TensorProduct]@T__, perm_] :=
     TensorTranspose[TensorProduct@T, perm]
 
-(* entanglement entropy of U.A, as defined in equation (10) of https://arxiv.org/pdf/2104.08283 *)
-entanglement@UA_ /; ArrayDepth@UA==4 := With[{\[Lambda]s=SingularValueList[Flatten[UA, {{1,3},{2,4}}], Tolerance->0]},
-    With[{ps = \[Lambda]s^2/\[Lambda]s . \[Lambda]s}, -ps . Log@Clip[ps,{$MinMachineNumber,1}]]]
-
 
 (*verification code:*)
 
@@ -72,9 +72,9 @@ Clear[checkAnsatz, checkAnsatzRepeated]
 
 (* check that the ansatz in equation (1) of https://arxiv.org/pdf/2104.08283 results in the minimal entanglement entropy *)
 checkAnsatz[\[Chi]1_,\[Chi]2_,\[Chi]3a_,\[Chi]4b_,\[Chi]3c_,\[Chi]4c_, \[Epsilon]_:0, rand_:randomComplex] := Module[{M1,M2,M3,A,normalize=#/Norm@Flatten@#&},
-    {M1,M2,M3} = normalize /@ {rand[\[Chi]1,\[Chi]3a], rand[\[Chi]2,\[Chi]4b], rand[\[Chi]3c,\[Chi]4c]};
+    {M1,M2,M3} = {rand[\[Chi]1,\[Chi]3a], rand[\[Chi]2,\[Chi]4b], rand[\[Chi]3c,\[Chi]4c]};
     A = Flatten[M1\[TensorProduct]M2\[TensorProduct]M3, {{1,3},{2,5},{4,6}}];
-    A = A + \[Epsilon] normalize[randomComplex@@Dimensions@A];
+    A = A + \[Epsilon] Norm@Flatten@A normalize[randomComplex@@Dimensions@A];
     entanglement[fastDisentangle[{\[Chi]1,\[Chi]2}, A] . A] - entanglement@ArrayReshape[M3,{1,1,\[Chi]3c,\[Chi]4c}]]
 
 (* repeatedly check the ansatz *)
@@ -90,4 +90,4 @@ checkAnsatzRepeated[max\[Chi]_:9] := Module[{c=0,\[Epsilon],args,\[Chi]s,\[Chi]1
         If[\[Chi]1 <= \[Chi]3a \[And] \[Chi]2 <= \[Chi]4b,
             args = Join[\[Chi]s, {\[Epsilon], RandomChoice@{randomReal,randomComplex}}];
             S = checkAnsatz@@args;
-            If[S>Sqrt@Max[\[Epsilon],$MachineEpsilon], args->S // Throw]]]]
+            If[S > 0.1Sqrt@Max[\[Epsilon],$MachineEpsilon], args->S // Throw]]]]
