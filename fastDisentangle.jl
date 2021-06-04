@@ -42,7 +42,7 @@ function fastDisentangle(chi1::Int, chi2::Int, A::AbstractArray{T,3},
     # implementing Algorithm 1 in https://arxiv.org/pdf/2104.08283
     r = randn(T, n) # 1
     svd_A = svd(tensordot(r, A)) # 2
-    alpha3, alpha4 = conj(svd_A.U[:,1]), svd_A.Vt[1,:]
+    alpha3, alpha4 = conj(svd_A.U[:,1]), conj(svd_A.Vt[1,:])
     V3  = svd(tensordot(A, alpha4)).Vt[1:chi1,:]' # 3
     V4  = svd(tensordot(permutedims(A,[1,3,2]), alpha3)).Vt[1:chi2,:]' # 4
     B   = permutedims(tensordot(permutedims(tensordot(A, V4), [1,3,2]), V3), [1,3,2]) # 5 TODO optimize order
@@ -51,7 +51,7 @@ function fastDisentangle(chi1::Int, chi2::Int, A::AbstractArray{T,3},
         transposeQ = chi1 > chi2
     end
     Bt  = transposeQ ? permutedims(B, [1,3,2]) : B
-    Ut  = reshape(orthogonalize(flatten(conj(Bt), 1)), size(Bt)) # 6
+    Ut  = reshape(orthogonalize!(flatten(conj(Bt), 1)), size(Bt)) # 6
     permutedims(Ut, transposeQ ? [3,2,1] : [2,3,1])
 end
 
@@ -88,7 +88,7 @@ end
 Gram-Schmidt orthonormalization of the rows of M.
 Inserts random vectors in the case of linearly dependent rows.
 """
-function orthogonalize(M::Matrix{T}) where T
+function orthogonalize!(M::Matrix{T}) where T
     epsMin = sqrt(eps(real(T))) # once eps0<epsMin, we add random vectors if needed
     eps0 = 0.5sqrt(epsMin) # only accept new orthogonal vectors if their relative norm is at last eps0 after orthogonalization
     n,m = size(M)
@@ -126,7 +126,9 @@ function orthogonalize(M::Matrix{T}) where T
         end
         eps0 = eps0*eps0
     end
-    @assert norm(M' * M - I) < sqrt(epsMin) # TODO remove
+    if norm(M' * M - I) > eps(real(T)) ^ 0.75
+        return orthogonalize!(M)
+    end
     M
 end
 
@@ -140,7 +142,7 @@ function checkAnsatz(chi1::Int, chi2::Int, chi3a::Int, chi4b::Int, chi3c::Int, c
                 (chi1*chi2, chi3a*chi3c, chi4b*chi4c))
     A = A + eps0 * norm(A) * normalize(randn(T,size(A)...))
     U = fastDisentangle(chi1,chi2,A)
-    return entanglement(tensordot(U,A,1)) - entanglement(reshape(M3,(1,1,chi3c,chi4c)))
+    return entanglement(tensordot(U,A)) - entanglement(reshape(M3,(1,1,chi3c,chi4c)))
 end
 
 """repeatedly check the ansatz"""
@@ -156,14 +158,11 @@ function checkAnsatzRepeated(maxChi::Int=9)
         chi1,chi2,chi3a,chi4b,chi3c,chi4c = chis
         chi3 = chi3a*chi3c
         chi4 = chi4b*chi4c
-        #eps0 = 10^(-6 - 14*rand(Float64)) # TODO
-        eps0 = 10^(-10 - 10*rand(Float64))
+        eps0 = 10^(-6 - 14*rand(Float64))
         complexQ = rand(Bool)
         if (chi1 <= chi3 && chi2 <= chi4) ||
            ((chi3c==1 || chi4c==1) && (chi2 <= divUp(chi4, divUp(chi1,chi3)) ||
                                        chi1 <= divUp(chi3, divUp(chi2,chi4))))
-#         if chi1 <= chi3a && chi2 <= chi4b
-#         if chi1 <= chi3 && chi2 <= chi4
             args = (chis..., complexQ ? ComplexF64(eps0) : eps0)
             S = checkAnsatz(args...)
             if S > 0.1sqrt(max(eps0, eps(Float64)))

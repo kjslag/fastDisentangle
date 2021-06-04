@@ -104,7 +104,8 @@ def orthogonalize(M):
                     norms[i] = maxNorm
                 allOrthog = False
         eps = eps*eps
-    #assert(np.linalg.norm(M * np.mat(M).H - np.eye(m)) < np.sqrt(epsMin))
+    if np.linalg.norm(M * np.mat(M).H - np.eye(m)) > np.finfo(M.dtype).eps ** 0.75:
+        return orthogonalize(M)
     return M
 
 # verification code
@@ -133,7 +134,6 @@ def checkAnsatzRepeated(maxChi=5):
         chi4 = chi4b*chi4c
         eps  = 10**np.random.uniform(-20,-6)
         complexQ = np.random.choice([True, False])
-        #if chi2 <= math.ceil(chi4 / math.ceil(chi1/chi3)) or chi1 <= math.ceil(chi3 / math.ceil(chi2/chi4)):
         if (chi1 <= chi3 and chi2 <= chi4) or \
            ((chi3c==1 or chi4c==1) and (chi2 <= math.ceil(chi4 / math.ceil(chi1/chi3)) or
                                         chi1 <= math.ceil(chi3 / math.ceil(chi2/chi4)))):
