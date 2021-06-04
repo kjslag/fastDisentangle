@@ -88,7 +88,7 @@ end
 Gram-Schmidt orthonormalization of the rows of M.
 Inserts random vectors in the case of linearly dependent rows.
 """
-function orthogonalize!(M::Matrix{T}) where T
+function orthogonalize!(M::Matrix{T}, reorthogonalizeQ::Bool=true) where T
     epsMin = sqrt(eps(real(T))) # once eps0<epsMin, we add random vectors if needed
     eps0 = 0.5sqrt(epsMin) # only accept new orthogonal vectors if their relative norm is at last eps0 after orthogonalization
     n,m = size(M)
@@ -126,8 +126,8 @@ function orthogonalize!(M::Matrix{T}) where T
         end
         eps0 = eps0*eps0
     end
-    if norm(M' * M - I) > eps(real(T)) ^ 0.75
-        return orthogonalize!(M)
+    if reorthogonalizeQ && norm(M' * M - I) > eps(real(T)) ^ 0.75
+        return orthogonalize!(M, false)
     end
     M
 end

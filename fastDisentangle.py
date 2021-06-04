@@ -69,7 +69,7 @@ def randomComplex(*ns):
     """Gaussian random array with dimensions ns"""
     return np.reshape(np.random.normal(scale=1/np.sqrt(2), size=(*ns,2)).view(np.complex128), ns)
 
-def orthogonalize(M):
+def orthogonalize(M, reorthogonalizeQ=True):
     """Gram-Schmidt orthonormalization of the rows of M.
        Inserts random vectors in the case of linearly dependent rows."""
     M = np.array(M)
@@ -104,8 +104,8 @@ def orthogonalize(M):
                     norms[i] = maxNorm
                 allOrthog = False
         eps = eps*eps
-    if np.linalg.norm(M * np.mat(M).H - np.eye(m)) > np.finfo(M.dtype).eps ** 0.75:
-        return orthogonalize(M)
+    if reorthogonalizeQ and np.linalg.norm(M * np.mat(M).H - np.eye(m)) > np.finfo(M.dtype).eps ** 0.75:
+        return orthogonalize(M, False)
     return M
 
 # verification code
