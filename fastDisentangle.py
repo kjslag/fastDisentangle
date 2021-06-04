@@ -51,40 +51,50 @@ def fastDisentangle(chi1, chi2, A, transposeQ=None):
         U = np.swapaxes(U, 0, 1)
     return U
 
-def randomReal(ns):
+def randomReal(*ns):
     """Gaussian random array with dimensions ns"""
-    if isinstance(ns, int):
-        ns = [ns]
     return np.random.normal(size=ns)
 
-def randomComplex(ns):
+def randomComplex(*ns):
     """Gaussian random array with dimensions ns"""
-    if isinstance(ns, int):
-        ns = [ns]
-    return np.reshape(np.random.normal(scale=1/np.sqrt(2), size=ns+[2]).view(np.complex128), ns)
+    return np.reshape(np.random.normal(scale=1/np.sqrt(2), size=(*ns,2)).view(np.complex128), ns)
 
 def orthogonalize(M):
     """Gram-Schmidt orthonormalization of the rows of M.
        Inserts random vectors in the case of linearly dependent rows."""
     M = np.array(M)
     rand = randomComplex if np.iscomplexobj(M) else randomReal
-    eps  = np.sqrt(np.finfo(M.dtype).eps)
-    assert M.shape[0] <= M.shape[1]
+    epsMin = np.sqrt(np.finfo(M.dtype).eps) # once eps<epsMin, we add random vectors if needed
+    eps = 0.5*np.sqrt(epsMin) # only accept new orthogonal vectors if their relative norm is at last eps after orthogonalization
+    m,n = M.shape
+    assert m <= n
     norms = np.linalg.norm(M, axis=1)
-    for i in range(0, M.shape[0]):
-        Mi = M[i]
-        while True:
-            for j in range(0, i):
-                Mi = Mi - M[j] * (np.conj(M[j]) @ Mi)
-            norm = np.linalg.norm(Mi)
-            if norms[i] == 0 or norm < eps * norms[i]:
-                # M[i] was a linear combination of M[:i-1]
-                # try a random vector instead:
-                Mi = rand(Mi.shape[0])
-                norms[i] = np.linalg.norm(Mi)
-            else:
-                M[i] = Mi / norm
-                break
+    maxNorm = np.max(norms)
+    orthogQ = np.zeros(m, 'bool')
+    allOrthog = False
+    while not allOrthog:
+        allOrthog = True
+        eps1 = max(eps, epsMin)
+        for i in range(m):
+            if not orthogQ[i]:
+                if norms[i] > eps1 * maxNorm:
+                    Mi = M[i]
+                    for j in range(m):
+                        if orthogQ[j]:
+                            Mi = Mi - M[j] * (np.conj(M[j]) @ Mi)
+                    norm = np.linalg.norm(Mi)
+                    if norm > eps1 * norms[i]:
+                        M[i] = Mi / norm
+                        orthogQ[i] = True
+                        continue
+                # M[i] was a linear combination of the other vectors
+                if eps < epsMin:
+                    M[i]  = rand(n)
+                    M[i] *= maxNorm/np.linalg.norm(M[i])
+                    norms[i] = maxNorm
+                allOrthog = False
+        eps = eps*eps
+    #assert(np.linalg.norm(M * np.mat(M).H - np.eye(m)) < np.sqrt(epsMin))
     return M
 
 def entanglement(UA):
@@ -96,3 +106,39 @@ def entanglement(UA):
     ps  = lambdas*lambdas
     ps /= np.sum(ps)
     return max(0., -np.dot(ps, np.log(np.maximum(ps, np.finfo(ps.dtype).tiny))))
+
+# verification code
+
+def checkAnsatz(chi1, chi2, chi3a, chi4b, chi3c, chi4c, eps=0, complexQ=True):
+    """Check that the ansatz in equation (1) of https://arxiv . org/pdf/2104.08283 results in the minimal entanglement entropy."""
+    rand = randomComplex if complexQ else randomReal
+    normalize = lambda x: x / np.linalg.norm(x)
+    M1,M2,M3 = rand(chi1,chi3a), rand(chi2,chi4b), rand(chi3c,chi4c)
+    A = np.reshape(np.transpose(np.tensordot(np.tensordot(M1, M2, 0), M3, 0), (0,2,1,4,3,5)),
+                   (chi1*chi2, chi3a*chi3c, chi4b*chi4c))
+    A = normalize(A) + eps * normalize(rand(*A.shape))
+    U = fastDisentangle(chi1,chi2,A)
+    return entanglement(np.tensordot(U,A,1)) - entanglement(np.reshape(M3,(1,1,chi3c,chi4c)))
+
+def checkAnsatzRepeated(maxChi=5):
+    """repeatedly check the ansatz"""
+    c = 0
+    while True:
+        c += 1
+        if c%1000 == 0:
+            print(c)
+        chis = np.random.randint(1,maxChi,6)
+        chi1,chi2,chi3a,chi4b,chi3c,chi4c = chis
+        chi3 = chi3a*chi3c
+        chi4 = chi4b*chi4c
+        eps  = 10**np.random.uniform(-20,-6)
+        complexQ = np.random.choice([True, False])
+        #if chi2 <= math.ceil(chi4 / math.ceil(chi1/chi3)) or chi1 <= math.ceil(chi3 / math.ceil(chi2/chi4)):
+        if (chi1 <= chi3 and chi2 <= chi4) or \
+           ((chi3c==1 or chi4c==1) and (chi2 <= math.ceil(chi4 / math.ceil(chi1/chi3)) or
+                                        chi1 <= math.ceil(chi3 / math.ceil(chi2/chi4)))):
+            args = (*chis, eps, complexQ)
+            S = checkAnsatz(*args)
+            if S > np.sqrt(max(eps, np.finfo(S).eps)):
+                print(args, " -> ", S)
+                return
